@@ -101,6 +101,7 @@ class _StudyBuddyHomeState extends State<StudyBuddyHome> {
   int? _selectedAnswer;
   bool _showAnswer = false;
   bool _isGenerating = false;
+  bool _notesExpanded = true;
   int _generationStep = 0;
   final Map<String, ConfidenceLevel> _confidence = {};
   static const _generationSteps = [
@@ -140,6 +141,7 @@ class _StudyBuddyHomeState extends State<StudyBuddyHome> {
       _selectedAnswer = null;
       _showAnswer = false;
       _isGenerating = false;
+      _notesExpanded = false;
       _generationStep = 0;
       _confidence.clear();
     });
@@ -154,6 +156,10 @@ class _StudyBuddyHomeState extends State<StudyBuddyHome> {
     return _confidence.values
         .where((level) => level == ConfidenceLevel.strong)
         .length;
+  }
+
+  int get _reviewedCount {
+    return _confidence.length;
   }
 
   @override
@@ -229,53 +235,82 @@ class _StudyBuddyHomeState extends State<StudyBuddyHome> {
   }
 
   Widget _buildNotesPanel() {
+    final hasStudySet = _studySet != null;
+
     return _Panel(
       title: 'Paste Notes',
       icon: Icons.edit_note_rounded,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const _Notice(
-            icon: Icons.verified_user_rounded,
-            text:
-                'Use your own notes. AI or auto-generated study material can be wrong, so compare it with class materials.',
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _notesController,
-            minLines: 14,
-            maxLines: 20,
-            textInputAction: TextInputAction.newline,
-            style: const TextStyle(
-              color: AppColors.primary,
-              fontSize: 17,
-              height: 1.42,
+          if (hasStudySet) ...[
+            OutlinedButton.icon(
+              onPressed: () {
+                setState(() => _notesExpanded = !_notesExpanded);
+              },
+              icon: Icon(
+                _notesExpanded
+                    ? Icons.keyboard_arrow_up_rounded
+                    : Icons.keyboard_arrow_down_rounded,
+              ),
+              label: Text(_notesExpanded ? 'Hide notes' : 'Show notes'),
             ),
-            decoration: const InputDecoration(
-              alignLabelWithHint: true,
-              labelText: 'Class notes',
-              hintText: 'Paste lecture notes, outlines, or review sheets here.',
-              filled: true,
-              fillColor: Color(0xFFFBFDFF),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.all(
-                  Radius.circular(AppRadius.medium),
+            const SizedBox(height: 12),
+          ],
+          AnimatedCrossFade(
+            firstChild: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const _Notice(
+                  icon: Icons.verified_user_rounded,
+                  text:
+                      'Use your own notes. AI or auto-generated study material can be wrong, so compare it with class materials.',
                 ),
-                borderSide: BorderSide(color: AppColors.line),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.all(
-                  Radius.circular(AppRadius.medium),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _notesController,
+                  minLines: 14,
+                  maxLines: 20,
+                  textInputAction: TextInputAction.newline,
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 17,
+                    height: 1.42,
+                  ),
+                  decoration: const InputDecoration(
+                    alignLabelWithHint: true,
+                    labelText: 'Class notes',
+                    hintText:
+                        'Paste lecture notes, outlines, or review sheets here.',
+                    filled: true,
+                    fillColor: Color(0xFFFBFDFF),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(
+                        Radius.circular(AppRadius.medium),
+                      ),
+                      borderSide: BorderSide(color: AppColors.line),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(
+                        Radius.circular(AppRadius.medium),
+                      ),
+                      borderSide: BorderSide(color: AppColors.line, width: 1.2),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(
+                        Radius.circular(AppRadius.medium),
+                      ),
+                      borderSide: BorderSide(color: AppColors.blue, width: 1.8),
+                    ),
+                  ),
                 ),
-                borderSide: BorderSide(color: AppColors.line, width: 1.2),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.all(
-                  Radius.circular(AppRadius.medium),
-                ),
-                borderSide: BorderSide(color: AppColors.blue, width: 1.8),
-              ),
+              ],
             ),
+            secondChild: _CollapsedNotesSummary(text: _notesController.text),
+            crossFadeState: _notesExpanded
+                ? CrossFadeState.showFirst
+                : CrossFadeState.showSecond,
+            duration: const Duration(milliseconds: 180),
           ),
           const SizedBox(height: 12),
           DecoratedBox(
@@ -346,6 +381,10 @@ class _StudyBuddyHomeState extends State<StudyBuddyHome> {
                   )
                 : const SizedBox.shrink(),
           ),
+          if (hasStudySet && !_notesExpanded) ...[
+            const SizedBox(height: 18),
+            const _CollapsedNotesArt(),
+          ],
         ],
       ),
     );
@@ -361,7 +400,11 @@ class _StudyBuddyHomeState extends State<StudyBuddyHome> {
       icon: Icons.school_rounded,
       child: Column(
         children: [
-          _StudyStats(set: studySet, masteredCount: _masteredCount),
+          _StudyStats(
+            set: studySet,
+            reviewedCount: _reviewedCount,
+            masteredCount: _masteredCount,
+          ),
           const SizedBox(height: 14),
           _SegmentedTabs(
             selectedIndex: _selectedTab,
@@ -451,6 +494,90 @@ class _HeaderPanel extends StatelessWidget {
         ],
       ),
       clipBehavior: Clip.antiAlias,
+    );
+  }
+}
+
+class _CollapsedNotesSummary extends StatelessWidget {
+  const _CollapsedNotesSummary({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = text
+        .split(RegExp(r'\n+'))
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .length;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFBFDFF),
+        borderRadius: BorderRadius.circular(AppRadius.medium),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.notes_rounded, color: AppColors.blue),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              lines == 1 ? 'Class notes hidden' : '$lines note lines hidden',
+              style: AppType.body.copyWith(
+                color: AppColors.muted,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CollapsedNotesArt extends StatelessWidget {
+  const _CollapsedNotesArt();
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadius.large),
+      child: Stack(
+        children: [
+          AspectRatio(
+            aspectRatio: 16 / 9,
+            child: Image.asset(
+              'assets/images/studyBuddyCollapse.png',
+              fit: BoxFit.cover,
+              alignment: Alignment.center,
+              errorBuilder: (context, error, stackTrace) => Container(
+                color: AppColors.primary,
+                child: const Icon(
+                  Icons.auto_stories_rounded,
+                  color: Colors.white,
+                  size: 64,
+                ),
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppColors.primary.withValues(alpha: 0.52),
+                    Colors.transparent,
+                  ],
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.center,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -775,16 +902,21 @@ class _PlaceholderRow extends StatelessWidget {
 }
 
 class _StudyStats extends StatelessWidget {
-  const _StudyStats({required this.set, required this.masteredCount});
+  const _StudyStats({
+    required this.set,
+    required this.reviewedCount,
+    required this.masteredCount,
+  });
 
   final StudySet set;
+  final int reviewedCount;
   final int masteredCount;
 
   @override
   Widget build(BuildContext context) {
     final progress = set.flashcards.isEmpty
         ? 0.0
-        : masteredCount / set.flashcards.length;
+        : reviewedCount / set.flashcards.length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -801,8 +933,8 @@ class _StudyStats extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: _Metric(
-                label: 'Quiz',
-                value: set.questions.length.toString(),
+                label: 'Reviewed',
+                value: reviewedCount.toString(),
                 color: AppColors.purple,
               ),
             ),
@@ -817,7 +949,7 @@ class _StudyStats extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        Text('Mastery progress', style: AppType.label),
+        Text('Review progress', style: AppType.label),
         const SizedBox(height: 6),
         ClipRRect(
           borderRadius: BorderRadius.circular(AppRadius.small),
@@ -1436,7 +1568,7 @@ class StudySetGenerator {
 
   static List<KeyTerm> _extractTerms(String rawNotes, List<String> sentences) {
     final structuredTerms = _extractStructuredTerms(rawNotes);
-    if (structuredTerms.length >= 8) {
+    if (structuredTerms.length >= 4) {
       return structuredTerms;
     }
 
@@ -1477,11 +1609,24 @@ class StudySetGenerator {
   }
 
   static List<KeyTerm> _extractStructuredTerms(String rawNotes) {
-    final lines = _normalizeMessyNotes(
-      rawNotes,
-    ).split('\n').map(_cleanSentence).where((line) => line.length > 2).toList();
-    final terms = <KeyTerm>[];
-    final seen = <String>{};
+    final rawLineTerms = _extractRawTermDefinitionLines(rawNotes);
+    final hasExpandableHeading =
+        RegExp(
+          r'^[A-Za-z][A-Za-z0-9 /().-]{1,60}:\s*$',
+          multiLine: true,
+        ).hasMatch(rawNotes) &&
+        RegExp(r'^\s*[-*]\s+', multiLine: true).hasMatch(rawNotes);
+    if (rawLineTerms.length >= 4 && !hasExpandableHeading) {
+      return rawLineTerms;
+    }
+
+    final lines = _normalizeMessyNotes(rawNotes)
+        .split(RegExp(r'\n+|(?<=[.!?])\s+'))
+        .map(_cleanSentence)
+        .where((line) => line.length > 2)
+        .toList();
+    final terms = [...rawLineTerms];
+    final seen = rawLineTerms.map((term) => term.term.toLowerCase()).toSet();
 
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i];
@@ -1495,7 +1640,51 @@ class StudySetGenerator {
         continue;
       }
 
-      final dashMatch = RegExp(r'^(.{3,70}?)\s+-\s+(.{4,})$').firstMatch(line);
+      final uncertainMatch = RegExp(
+        r'^([A-Za-z][A-Za-z0-9 /().-]{1,60}?)\?+\s+(.{4,})$',
+      ).firstMatch(line);
+      if (uncertainMatch != null &&
+          _looksLikeUsefulPrompt(uncertainMatch.group(1)!)) {
+        _addStructuredTerm(
+          terms,
+          seen,
+          uncertainMatch.group(1)!,
+          uncertainMatch.group(2)!,
+        );
+        continue;
+      }
+
+      final parentheticalArrowMatch = RegExp(
+        r'^([A-Za-z][A-Za-z0-9 /.-]{1,60}?)\s*\((.{4,})\)\s*(?:->|\u2192)\s*(.{2,})$',
+      ).firstMatch(line);
+      if (parentheticalArrowMatch != null &&
+          _looksLikeUsefulPrompt(parentheticalArrowMatch.group(1)!)) {
+        _addStructuredTerm(
+          terms,
+          seen,
+          parentheticalArrowMatch.group(1)!,
+          '${parentheticalArrowMatch.group(2)!} \u2192 ${parentheticalArrowMatch.group(3)!}',
+        );
+        continue;
+      }
+
+      final rateMatch = RegExp(
+        r'^([A-Za-z][A-Za-z0-9 /().-]{1,60}?)\s+(HR|heart rate)(\s*[<>]=?\s*)(.{2,})$',
+        caseSensitive: false,
+      ).firstMatch(line);
+      if (rateMatch != null && _looksLikeUsefulPrompt(rateMatch.group(1)!)) {
+        _addStructuredTerm(
+          terms,
+          seen,
+          rateMatch.group(1)!,
+          '${rateMatch.group(2)!}${rateMatch.group(3)!}${rateMatch.group(4)!}',
+        );
+        continue;
+      }
+
+      final dashMatch = RegExp(
+        r'^(.{2,70}?)\s+[-\u2013\u2014]\s+(.{4,})$',
+      ).firstMatch(line);
       if (dashMatch != null &&
           !dashMatch.group(1)!.contains('?') &&
           _looksLikeUsefulPrompt(dashMatch.group(1)!)) {
@@ -1508,12 +1697,32 @@ class StudySetGenerator {
         continue;
       }
 
+      final arrowMatch = RegExp(
+        r'^(.{2,70}?)\s*(?:->|\u2192)\s*(.{4,})$',
+      ).firstMatch(line);
+      if (arrowMatch != null &&
+          !arrowMatch.group(1)!.contains('?') &&
+          !arrowMatch.group(1)!.contains(':') &&
+          !arrowMatch.group(1)!.contains('=') &&
+          _looksLikeUsefulPrompt(arrowMatch.group(1)!)) {
+        _addStructuredTerm(
+          terms,
+          seen,
+          arrowMatch.group(1)!,
+          arrowMatch.group(2)!,
+        );
+        continue;
+      }
+
       final colonMatch = RegExp(
-        r'^(.{3,60}?)(?:\s*[:=]\s+)(.{4,})$',
+        r'^(.{2,60}?)(?:\s*[:=]\s+)(.{4,})$',
       ).firstMatch(line);
       if (colonMatch != null &&
           !colonMatch.group(1)!.contains('?') &&
-          !colonMatch.group(2)!.contains('?') &&
+          !RegExp(
+            r'^(q|question|a|answer|note)$',
+            caseSensitive: false,
+          ).hasMatch(colonMatch.group(1)!.trim()) &&
           _looksLikeUsefulPrompt(colonMatch.group(1)!)) {
         _addStructuredTerm(
           terms,
@@ -1522,6 +1731,75 @@ class StudySetGenerator {
           colonMatch.group(2)!,
         );
         continue;
+      }
+
+      final noteTermMatch = RegExp(
+        r'^NOTE\s*:\s*[“"]?(.{2,60}?)[”"]?\s*=\s+(.{4,})$',
+        caseSensitive: false,
+      ).firstMatch(line);
+      if (noteTermMatch != null &&
+          _looksLikeUsefulPrompt(noteTermMatch.group(1)!)) {
+        _addStructuredTerm(
+          terms,
+          seen,
+          noteTermMatch.group(1)!,
+          noteTermMatch.group(2)!,
+        );
+        continue;
+      }
+
+      final parenthesesMatch = RegExp(
+        r'^([A-Za-z][A-Za-z0-9 /.-]{1,60}?)\s*\((.{4,})\)$',
+      ).firstMatch(line);
+      if (parenthesesMatch != null &&
+          !parenthesesMatch.group(1)!.contains('?') &&
+          _looksLikeUsefulPrompt(parenthesesMatch.group(1)!)) {
+        _addStructuredTerm(
+          terms,
+          seen,
+          parenthesesMatch.group(1)!,
+          parenthesesMatch.group(2)!,
+        );
+        continue;
+      }
+
+      final comparisonMatch = RegExp(
+        r'^([A-Za-z][A-Za-z0-9 /().-]{1,60}?)\s*([<>]=?)\s*(.{2,})$',
+      ).firstMatch(line);
+      if (comparisonMatch != null &&
+          _looksLikeUsefulPrompt(comparisonMatch.group(1)!)) {
+        _addStructuredTerm(
+          terms,
+          seen,
+          comparisonMatch.group(1)!,
+          '${comparisonMatch.group(2)!}${comparisonMatch.group(3)!}',
+        );
+        continue;
+      }
+
+      final headingMatch = RegExp(
+        r'^([A-Za-z][A-Za-z0-9 /().-]{1,60}?):$',
+      ).firstMatch(line);
+      if (headingMatch != null &&
+          _looksLikeUsefulPrompt(headingMatch.group(1)!)) {
+        final details = <String>[];
+        var j = i + 1;
+        while (j < lines.length && details.length < 4) {
+          final detail = lines[j];
+          if (_looksLikeNewStructuredLine(detail)) break;
+          if (detail.length > 3) details.add(detail);
+          j++;
+        }
+        if (details.isNotEmpty) {
+          _addStructuredTerm(
+            terms,
+            seen,
+            headingMatch.group(1)!,
+            details.join('; '),
+          );
+          i = j - 1;
+          continue;
+        }
       }
 
       if (line.endsWith('?') && i + 1 < lines.length) {
@@ -1552,9 +1830,171 @@ class StudySetGenerator {
     return terms;
   }
 
+  static List<KeyTerm> _extractRawTermDefinitionLines(String rawNotes) {
+    final terms = <KeyTerm>[];
+    final seen = <String>{};
+    final lines = rawNotes
+        .replaceAll('\r', '\n')
+        .split('\n')
+        .map(_cleanSentence)
+        .where((line) => line.length > 2);
+
+    for (final line in lines) {
+      final uncertainMatch = RegExp(
+        r'^([A-Za-z][A-Za-z0-9 /().-]{1,60}?)\?+\s+(.{4,})$',
+      ).firstMatch(line);
+      if (uncertainMatch != null &&
+          _looksLikeUsefulPrompt(uncertainMatch.group(1)!)) {
+        _addStructuredTerm(
+          terms,
+          seen,
+          uncertainMatch.group(1)!,
+          uncertainMatch.group(2)!,
+        );
+        continue;
+      }
+
+      final parentheticalArrowMatch = RegExp(
+        r'^([A-Za-z][A-Za-z0-9 /.-]{1,60}?)\s*\((.{4,})\)\s*(?:->|\u2192)\s*(.{2,})$',
+      ).firstMatch(line);
+      if (parentheticalArrowMatch != null &&
+          _looksLikeUsefulPrompt(parentheticalArrowMatch.group(1)!)) {
+        _addStructuredTerm(
+          terms,
+          seen,
+          parentheticalArrowMatch.group(1)!,
+          '${parentheticalArrowMatch.group(2)!} \u2192 ${parentheticalArrowMatch.group(3)!}',
+        );
+        continue;
+      }
+
+      final rateMatch = RegExp(
+        r'^([A-Za-z][A-Za-z0-9 /().-]{1,60}?)\s+(HR|heart rate)(\s*[<>]=?\s*)(.{2,})$',
+        caseSensitive: false,
+      ).firstMatch(line);
+      if (rateMatch != null && _looksLikeUsefulPrompt(rateMatch.group(1)!)) {
+        _addStructuredTerm(
+          terms,
+          seen,
+          rateMatch.group(1)!,
+          '${rateMatch.group(2)!}${rateMatch.group(3)!}${rateMatch.group(4)!}',
+        );
+        continue;
+      }
+
+      final dashMatch = RegExp(
+        r'^(.{2,70}?)\s+[-\u2013\u2014]\s+(.{4,})$',
+      ).firstMatch(line);
+      if (dashMatch != null &&
+          !dashMatch.group(1)!.contains('?') &&
+          _looksLikeUsefulPrompt(dashMatch.group(1)!)) {
+        _addStructuredTerm(
+          terms,
+          seen,
+          dashMatch.group(1)!,
+          dashMatch.group(2)!,
+        );
+        continue;
+      }
+
+      final arrowMatch = RegExp(
+        r'^(.{2,70}?)\s*(?:->|\u2192)\s*(.{4,})$',
+      ).firstMatch(line);
+      if (arrowMatch != null &&
+          !arrowMatch.group(1)!.contains('?') &&
+          !arrowMatch.group(1)!.contains(':') &&
+          !arrowMatch.group(1)!.contains('=') &&
+          _looksLikeUsefulPrompt(arrowMatch.group(1)!)) {
+        _addStructuredTerm(
+          terms,
+          seen,
+          arrowMatch.group(1)!,
+          arrowMatch.group(2)!,
+        );
+        continue;
+      }
+
+      final colonMatch = RegExp(
+        r'^(.{2,60}?)(?:\s*[:=]\s+)(.{4,})$',
+      ).firstMatch(line);
+      if (colonMatch != null &&
+          !colonMatch.group(1)!.contains('?') &&
+          !RegExp(
+            r'^(q|question|a|answer|note)$',
+            caseSensitive: false,
+          ).hasMatch(colonMatch.group(1)!.trim()) &&
+          _looksLikeUsefulPrompt(colonMatch.group(1)!)) {
+        _addStructuredTerm(
+          terms,
+          seen,
+          colonMatch.group(1)!,
+          colonMatch.group(2)!,
+        );
+        continue;
+      }
+
+      final noteTermMatch = RegExp(
+        r'^NOTE\s*:\s*[“"]?(.{2,60}?)[”"]?\s*=\s+(.{4,})$',
+        caseSensitive: false,
+      ).firstMatch(line);
+      if (noteTermMatch != null &&
+          _looksLikeUsefulPrompt(noteTermMatch.group(1)!)) {
+        _addStructuredTerm(
+          terms,
+          seen,
+          noteTermMatch.group(1)!,
+          noteTermMatch.group(2)!,
+        );
+        continue;
+      }
+
+      final parenthesesMatch = RegExp(
+        r'^([A-Za-z][A-Za-z0-9 /.-]{1,60}?)\s*\((.{4,})\)$',
+      ).firstMatch(line);
+      if (parenthesesMatch != null &&
+          !parenthesesMatch.group(1)!.contains('?') &&
+          _looksLikeUsefulPrompt(parenthesesMatch.group(1)!)) {
+        _addStructuredTerm(
+          terms,
+          seen,
+          parenthesesMatch.group(1)!,
+          parenthesesMatch.group(2)!,
+        );
+        continue;
+      }
+
+      final comparisonMatch = RegExp(
+        r'^([A-Za-z][A-Za-z0-9 /().-]{1,60}?)\s*([<>]=?)\s*(.{2,})$',
+      ).firstMatch(line);
+      if (comparisonMatch != null &&
+          _looksLikeUsefulPrompt(comparisonMatch.group(1)!)) {
+        _addStructuredTerm(
+          terms,
+          seen,
+          comparisonMatch.group(1)!,
+          '${comparisonMatch.group(2)!}${comparisonMatch.group(3)!}',
+        );
+      }
+
+      if (terms.length >= 10) break;
+    }
+
+    return terms;
+  }
+
   static String _normalizeMessyNotes(String rawNotes) {
     var text = rawNotes.replaceAll('\r', '\n');
     text = text.replaceAll(RegExp(r'[•·]'), '\n- ');
+    text = text.replaceAllMapped(
+      RegExp(
+        r',\s+while\s+([A-Za-z][A-Za-z0-9 /().-]{2,60}\s+(?:is|are|means|refers to|involves|happens when|occurs when)\b)',
+        caseSensitive: false,
+      ),
+      (match) {
+        final clause = match.group(1)!;
+        return '. ${clause[0].toUpperCase()}${clause.substring(1)}';
+      },
+    );
     text = text.replaceAll(RegExp(r'^\s*[-*]\s+', multiLine: true), '\n- ');
     text = text.replaceAll(
       RegExp(r'\s+(?=(?:q|question)\s*\d*[:.)-]\s*)', caseSensitive: false),
@@ -1577,13 +2017,13 @@ class StudySetGenerator {
     );
     text = text.replaceAllMapped(
       RegExp(
-        r'([.!])\s+(?=[A-Z][A-Za-z /-]{2,45}\s*(?:[:=]|-|\bis\b|\bare\b|\bmeans\b))',
+        r'([.!])\s+(?=[A-Z][A-Za-z /-]{2,45}\s*(?:[:=]|[-\u2013\u2014]|\bis\b|\bare\b|\bmeans\b))',
       ),
       (match) => '${match.group(1)}\n',
     );
     text = text.replaceAll(
       RegExp(
-        r'\s+(?=[A-Z][a-z][A-Za-z]*(?:\s+[A-Z]?[a-z][A-Za-z]*){0,5}\s*(?:[:=]|\s+-\s+))',
+        r'\s+(?=[A-Z][a-z][A-Za-z]*(?:\s+[A-Z]?[a-z][A-Za-z]*){0,5}\s*(?:[:=]|\s+[-\u2013\u2014]\s+))',
       ),
       '\n',
     );
@@ -1598,7 +2038,8 @@ class StudySetGenerator {
   ) {
     final cleanPrompt = _cleanPrompt(prompt);
     final cleanAnswer = _cleanAnswer(answer);
-    if (cleanPrompt.length < 4 || cleanAnswer.length < 4) return;
+    if (!_isAcronym(cleanPrompt) && cleanPrompt.length < 4) return;
+    if (cleanAnswer.length < 4) return;
     final key = cleanPrompt.toLowerCase();
     if (seen.add(key)) {
       terms.add(KeyTerm(term: cleanPrompt, definition: cleanAnswer));
@@ -1608,7 +2049,8 @@ class StudySetGenerator {
   static bool _looksLikeUsefulPrompt(String value) {
     final clean = _cleanSentence(value);
     final lower = clean.toLowerCase();
-    if (clean.length < 3 || clean.length > 70) return false;
+    final isAcronym = _isAcronym(clean);
+    if ((!isAcronym && clean.length < 3) || clean.length > 70) return false;
     if (_stopWords.contains(lower)) return false;
     if (RegExp(r'^(and|but|or|so|because|while|then)\b').hasMatch(lower)) {
       return false;
@@ -1616,9 +2058,20 @@ class StudySetGenerator {
     return RegExp(r'[A-Za-z]').hasMatch(clean);
   }
 
+  static bool _looksLikeNewStructuredLine(String line) {
+    final clean = _cleanSentence(line);
+    if (clean.length < 2) return false;
+    final hasPrompt = RegExp(r'^[A-Z][A-Za-z0-9 /().-]{1,60}').hasMatch(clean);
+    if (!hasPrompt) return false;
+    return RegExp(
+      r'(:\s+\S|=\s+\S|\s+[-\u2013\u2014]\s+|\s*(?:->|\u2192)\s*|\s+HR\s*[<>]|^NOTE\s*:)',
+      caseSensitive: false,
+    ).hasMatch(clean);
+  }
+
   static String _termFromSentence(String sentence) {
     final colonMatch = RegExp(
-      r'^([A-Za-z][A-Za-z0-9 /-]{2,40})\s*[:=-]',
+      r'^([A-Za-z][A-Za-z0-9 /-]{2,40})\s*[:=\-\u2013\u2014]',
     ).firstMatch(sentence);
     if (colonMatch != null) {
       return _titleCase(colonMatch.group(1)!.trim());
@@ -1750,6 +2203,8 @@ class StudySetGenerator {
 
   static String _cleanSentence(String sentence) {
     return sentence
+        .replaceAll(RegExp(r'^\*+|\*+$'), '')
+        .replaceFirst(RegExp(r'^[•·]\s*'), '')
         .replaceFirst(RegExp(r'^[*-]\s*'), '')
         .replaceFirst(RegExp(r'^\d+[.)]\s*'), '')
         .replaceAll(RegExp(r'\s+'), ' ')
@@ -1757,12 +2212,25 @@ class StudySetGenerator {
   }
 
   static String _cleanPrompt(String prompt) {
-    return _cleanSentence(prompt)
+    final clean = _cleanSentence(prompt)
         .replaceFirst(
           RegExp(r'^(q|question)\s*[:.)-]\s*', caseSensitive: false),
           '',
         )
         .trim();
+    final letters = RegExp(r'[A-Za-z]').allMatches(clean).length;
+    final uppercase = RegExp(r'[A-Z]').allMatches(clean).length;
+    if (_isAcronym(clean)) {
+      return clean;
+    }
+    if (letters > 1 && uppercase == letters) {
+      return _titleCase(clean);
+    }
+    return clean;
+  }
+
+  static bool _isAcronym(String value) {
+    return RegExp(r'^[A-Z0-9]{2,8}$').hasMatch(value);
   }
 
   static String _cleanAnswer(String answer) {
@@ -1771,6 +2239,7 @@ class StudySetGenerator {
           RegExp(r'^(a|answer)\s*[:.)-]\s*', caseSensitive: false),
           '',
         )
+        .replaceAll(RegExp(r'\?+'), '')
         .trim();
   }
 
