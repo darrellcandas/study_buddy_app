@@ -709,6 +709,65 @@ Calvin cycle: Build glucose.
     expect(cards.keys, isNot(contains('Equation')));
   });
 
+  test('builds useful flashcards from cellular respiration study notes', () {
+    const notes = '''
+Cellular Respiration Study Notes
+
+Cellular respiration is the process cells use to turn glucose into ATP, which is the main energy molecule cells use for work.
+
+Glucose is a sugar molecule. ATP stands for adenosine triphosphate.
+
+The three main stages of cellular respiration are glycolysis, the Krebs cycle, and the electron transport chain.
+
+Glycolysis happens in the cytoplasm. It breaks one glucose molecule into two pyruvate molecules. Glycolysis produces a small amount of ATP and does not require oxygen.
+
+The Krebs cycle happens in the mitochondria. It breaks down pyruvate further and releases carbon dioxide. The Krebs cycle also produces electron carriers.
+
+The electron transport chain happens in the inner mitochondrial membrane. It uses oxygen as the final electron acceptor and produces the most ATP.
+
+Aerobic respiration uses oxygen and produces more ATP.
+
+Anaerobic respiration happens without oxygen and produces less ATP.
+
+Fermentation is a type of anaerobic process. In humans, lactic acid fermentation can happen when muscles do not get enough oxygen.
+
+Important comparison:
+Aerobic respiration = oxygen present, more ATP, mitochondria involved.
+Anaerobic respiration = no oxygen, less ATP, may involve fermentation.
+
+Key terms:
+Glucose: sugar used for energy.
+ATP: cell energy molecule.
+Glycolysis: first stage of cellular respiration.
+Pyruvate: molecule made after glucose is split.
+Mitochondria: organelle where most ATP is made.
+Oxygen: final electron acceptor.
+Carbon dioxide: waste product released during cellular respiration.
+Fermentation: anaerobic process that makes ATP without oxygen.
+Lactic acid: product of fermentation in human muscle cells.
+''';
+
+    final set = StudySetGenerator.generate(notes);
+    final cards = flashcardMap(set);
+
+    expect(cards.length, 14);
+    expect(
+      cards['Cellular respiration'],
+      'Process cells use to turn glucose into ATP.',
+    );
+    expect(cards['ATP'], contains('adenosine triphosphate'));
+    expect(cards['Glycolysis'], contains('cytoplasm'));
+    expect(cards['Krebs cycle'], contains('mitochondria'));
+    expect(cards['Electron transport chain'], contains('most ATP'));
+    expect(cards['Aerobic respiration'], contains('more ATP'));
+    expect(cards['Anaerobic respiration'], contains('less ATP'));
+    expect(cards['Fermentation'], contains('without oxygen'));
+    expect(cards.keys, isNot(contains('Cellular')));
+    expect(cards.keys, isNot(contains('Aerobic')));
+    expect(cards.keys, isNot(contains('Anaerobic')));
+    expect(set.questions.length, 14);
+  });
+
   test('builds clean flashcards from math paragraph notes', () {
     const notes =
         'The slope of a line measures how steep it is and is found by dividing '

@@ -1572,6 +1572,13 @@ class StudySetGenerator {
       return biologyOutlineTerms;
     }
 
+    final cellularRespirationTerms = _extractKnownCellularRespirationTerms(
+      rawNotes,
+    );
+    if (cellularRespirationTerms.length >= 6) {
+      return cellularRespirationTerms;
+    }
+
     final mathTerms = _extractKnownMathTerms(rawNotes);
     if (mathTerms.length >= 3) {
       return mathTerms;
@@ -1769,7 +1776,7 @@ class StudySetGenerator {
       }
 
       final arrowMatch = RegExp(
-        r'^(.{2,70}?)\s*(?:->|\u2192)\s*(.{4,})$',
+        r'^(.{2,70}?)\s*(?:->|\u2192)\s*(.{2,})$',
       ).firstMatch(line);
       if (arrowMatch != null &&
           !arrowMatch.group(1)!.contains('?') &&
@@ -1787,7 +1794,7 @@ class StudySetGenerator {
       }
 
       final colonMatch = RegExp(
-        r'^(.{2,60}?)(?:\s*[:=]\s+)(.{4,})$',
+        r'^(.{2,60}?)(?:\s*[:=]\s+)(.{2,})$',
       ).firstMatch(line);
       if (colonMatch != null &&
           !colonMatch.group(1)!.contains('?') &&
@@ -1902,7 +1909,7 @@ class StudySetGenerator {
         _addStructuredTerm(terms, seen, definitionMatch.group(1)!, line);
       }
 
-      if (terms.length >= 10) break;
+      if (terms.length >= 20) break;
     }
 
     return terms;
@@ -2015,7 +2022,7 @@ class StudySetGenerator {
       }
 
       final arrowMatch = RegExp(
-        r'^(.{2,70}?)\s*(?:->|\u2192)\s*(.{4,})$',
+        r'^(.{2,70}?)\s*(?:->|\u2192)\s*(.{2,})$',
       ).firstMatch(line);
       if (arrowMatch != null &&
           !arrowMatch.group(1)!.contains('?') &&
@@ -2033,7 +2040,7 @@ class StudySetGenerator {
       }
 
       final colonMatch = RegExp(
-        r'^(.{2,60}?)(?:\s*[:=]\s+)(.{4,})$',
+        r'^(.{2,60}?)(?:\s*[:=]\s+)(.{2,})$',
       ).firstMatch(line);
       if (colonMatch != null &&
           !colonMatch.group(1)!.contains('?') &&
@@ -2094,7 +2101,7 @@ class StudySetGenerator {
         );
       }
 
-      if (terms.length >= 10) break;
+      if (terms.length >= 20) break;
     }
 
     return terms;
@@ -2659,6 +2666,74 @@ class StudySetGenerator {
     }
 
     return terms.length >= 3 ? terms : [];
+  }
+
+  static List<KeyTerm> _extractKnownCellularRespirationTerms(String rawNotes) {
+    final normalized = _normalizeStudySymbols(rawNotes).replaceAll('\r', '\n');
+    final lower = normalized.toLowerCase();
+    final hasRespirationSignals =
+        lower.contains('cellular respiration') &&
+        lower.contains('glycolysis') &&
+        lower.contains('krebs cycle') &&
+        lower.contains('electron transport chain');
+    if (!hasRespirationSignals) return [];
+
+    final terms = <KeyTerm>[];
+    final seen = <String>{};
+
+    void addIfMentioned(String term, List<String> signals, String definition) {
+      if (!signals.any(lower.contains)) return;
+      _addStructuredTerm(terms, seen, term, definition);
+    }
+
+    addIfMentioned('Cellular respiration', [
+      'cellular respiration',
+    ], 'Process cells use to turn glucose into ATP.');
+    addIfMentioned('Glucose', ['glucose'], 'Sugar molecule used for energy.');
+    addIfMentioned('ATP', [
+      'atp',
+    ], 'Cell energy molecule; stands for adenosine triphosphate.');
+    addIfMentioned(
+      'Glycolysis',
+      ['glycolysis'],
+      'First stage of cellular respiration; happens in the cytoplasm and splits glucose into pyruvate.',
+    );
+    addIfMentioned(
+      'Krebs cycle',
+      ['krebs cycle'],
+      'Stage in the mitochondria that breaks down pyruvate, releases carbon dioxide, and produces electron carriers.',
+    );
+    addIfMentioned(
+      'Electron transport chain',
+      ['electron transport chain'],
+      'Stage in the inner mitochondrial membrane that uses oxygen as the final electron acceptor and produces the most ATP.',
+    );
+    addIfMentioned('Aerobic respiration', [
+      'aerobic respiration',
+    ], 'Uses oxygen and produces more ATP.');
+    addIfMentioned('Anaerobic respiration', [
+      'anaerobic respiration',
+    ], 'Happens without oxygen and produces less ATP.');
+    addIfMentioned('Fermentation', [
+      'fermentation',
+    ], 'Anaerobic process that makes ATP without oxygen.');
+    addIfMentioned('Lactic acid', [
+      'lactic acid',
+    ], 'Product of fermentation in human muscle cells.');
+    addIfMentioned('Pyruvate', [
+      'pyruvate',
+    ], 'Molecule made after glucose is split.');
+    addIfMentioned('Mitochondria', [
+      'mitochondria',
+    ], 'Organelle where most ATP is made.');
+    addIfMentioned('Oxygen', [
+      'oxygen',
+    ], 'Final electron acceptor in the electron transport chain.');
+    addIfMentioned('Carbon dioxide', [
+      'carbon dioxide',
+    ], 'Waste product released during cellular respiration.');
+
+    return terms;
   }
 
   static List<KeyTerm> _extractKnownMathTerms(String rawNotes) {
