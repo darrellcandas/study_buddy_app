@@ -32,7 +32,7 @@ Use this checklist to finish Version 1 without pulling Version 2 features into t
 
 - [x] Privacy page exists at `docs/privacy.html`.
 - [x] Support page exists at `docs/support.html`.
-- [ ] Replace `your-email@example.com` with the real support/privacy email.
+- [x] Replace `your-email@example.com` with the real support/privacy email.
 - [ ] Publish `docs/` with GitHub Pages.
 - [ ] Add the published privacy URL to the store listing.
 - [ ] Add the published support URL to the store listing.
