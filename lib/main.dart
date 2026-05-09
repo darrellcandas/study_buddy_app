@@ -1567,13 +1567,36 @@ class StudySetGenerator {
   }
 
   static List<KeyTerm> _extractTerms(String rawNotes, List<String> sentences) {
+    final biologyOutlineTerms = _extractKnownBiologyOutline(rawNotes);
+    if (biologyOutlineTerms.isNotEmpty) {
+      return biologyOutlineTerms;
+    }
+
+    final mathTerms = _extractKnownMathTerms(rawNotes);
+    if (mathTerms.length >= 3) {
+      return mathTerms;
+    }
+
     final structuredTerms = _extractStructuredTerms(rawNotes);
-    if (structuredTerms.length >= 4) {
+    if (structuredTerms.length >= 4 ||
+        _allContentLinesStructured(rawNotes, structuredTerms)) {
       return structuredTerms;
+    }
+
+    final knownTerms = _extractKnownRespiratoryTerms(rawNotes);
+    if (knownTerms.length >= 4 ||
+        (structuredTerms.isEmpty && knownTerms.length >= 3) ||
+        _allContentLinesStructured(rawNotes, knownTerms)) {
+      return knownTerms;
     }
 
     final candidates = [...structuredTerms];
     final seen = structuredTerms.map((term) => term.term.toLowerCase()).toSet();
+    for (final term in knownTerms) {
+      if (seen.add(term.term.toLowerCase())) {
+        candidates.add(term);
+      }
+    }
 
     for (final sentence in sentences) {
       final definition = _cleanSentence(sentence);
@@ -1608,6 +1631,49 @@ class StudySetGenerator {
     return candidates.take(max(4, min(candidates.length, 10))).toList();
   }
 
+  static bool _allContentLinesStructured(String rawNotes, List<KeyTerm> terms) {
+    if (terms.isEmpty) return false;
+    final normalized = _normalizeStudySymbols(rawNotes).replaceAll('\r', '\n');
+    final numberedHeadingCount = RegExp(
+      r'^\s*[A-Za-z][A-Za-z0-9 /().-]{1,60}:\s*\n\s*\d+[.)]\s+',
+      multiLine: true,
+    ).allMatches(normalized).length;
+    if (numberedHeadingCount > 0) {
+      return terms.length >= numberedHeadingCount;
+    }
+
+    final blankBlocks = normalized
+        .split(RegExp(r'\n\s*\n+'))
+        .map((block) => block.trim())
+        .where((block) => block.length > 2)
+        .toList();
+    if (blankBlocks.length > 1) {
+      final structuredBlocks = blankBlocks
+          .where((block) => _looksLikeNewStructuredLine(_cleanSentence(block)))
+          .length;
+      if (structuredBlocks > 0) {
+        return terms.length >= structuredBlocks;
+      }
+    }
+
+    final contentLineCount = rawNotes
+        .replaceAllMapped(
+          RegExp(r'([A-Za-z])-\s*\r?\n\s*([a-z])'),
+          (match) => '${match.group(1)!}${match.group(2)!}',
+        )
+        .replaceAll('\r', '\n')
+        .split(RegExp(r'\n\s*\n+|\n+'))
+        .map(_cleanSentence)
+        .where((line) => line.length > 2)
+        .where(
+          (line) =>
+              !RegExp(r'^[A-Za-z][A-Za-z0-9 /().-]{1,60}:$').hasMatch(line),
+        )
+        .where((line) => !_isTableHeader(line))
+        .length;
+    return contentLineCount > 0 && terms.length >= contentLineCount;
+  }
+
   static List<KeyTerm> _extractStructuredTerms(String rawNotes) {
     final rawLineTerms = _extractRawTermDefinitionLines(rawNotes);
     final hasExpandableHeading =
@@ -1621,7 +1687,12 @@ class StudySetGenerator {
     }
 
     final lines = _normalizeMessyNotes(rawNotes)
-        .split(RegExp(r'\n+|(?<=[.!?])\s+'))
+        .split(
+          RegExp(
+            r'\n+|(?<=[.!?])\s+|;\s*(?=[A-Za-z][A-Za-z0-9 /().-]{1,60}\s*(?:[:=]|\s+[-\u2013\u2014]\s+|\s+HR\s*[<>]|\s*[<>]))',
+            caseSensitive: false,
+          ),
+        )
         .map(_cleanSentence)
         .where((line) => line.length > 2)
         .toList();
@@ -1705,12 +1776,13 @@ class StudySetGenerator {
           !arrowMatch.group(1)!.contains(':') &&
           !arrowMatch.group(1)!.contains('=') &&
           _looksLikeUsefulPrompt(arrowMatch.group(1)!)) {
-        _addStructuredTerm(
-          terms,
-          seen,
-          arrowMatch.group(1)!,
-          arrowMatch.group(2)!,
-        );
+        final left = arrowMatch.group(1)!;
+        final right = arrowMatch.group(2)!;
+        if (_looksLikeReverseArrowTerm(left, right)) {
+          _addStructuredTerm(terms, seen, right, left);
+        } else {
+          _addStructuredTerm(terms, seen, left, right);
+        }
         continue;
       }
 
@@ -1804,7 +1876,13 @@ class StudySetGenerator {
 
       if (line.endsWith('?') && i + 1 < lines.length) {
         final answer = lines[i + 1];
-        if (!answer.endsWith('?') && answer.length > 3) {
+        final answerIsLabeled = RegExp(
+          r'^(a|answer)\s*[:.)-]',
+          caseSensitive: false,
+        ).hasMatch(answer);
+        if (!answer.endsWith('?') &&
+            (!_looksLikeNewStructuredLine(answer) || answerIsLabeled) &&
+            answer.length > 3) {
           _addStructuredTerm(terms, seen, line, answer);
           i++;
           continue;
@@ -1833,13 +1911,23 @@ class StudySetGenerator {
   static List<KeyTerm> _extractRawTermDefinitionLines(String rawNotes) {
     final terms = <KeyTerm>[];
     final seen = <String>{};
-    final lines = rawNotes
-        .replaceAll('\r', '\n')
-        .split('\n')
-        .map(_cleanSentence)
-        .where((line) => line.length > 2);
+    final normalizedRaw = _normalizeStudySymbols(
+      rawNotes,
+    ).replaceAll('\r', '\n');
+    _addBlockStructuredTerms(normalizedRaw, terms, seen);
 
-    for (final line in lines) {
+    final lines = normalizedRaw
+        .replaceAll('\r', '\n')
+        .split(
+          RegExp(
+            r'\n+|;\s*(?=[A-Za-z][A-Za-z0-9 /().-]{1,60}\s*(?:[:=]|\s+[-\u2013\u2014]\s+|\s+HR\s*[<>]|\s*[<>]))',
+            caseSensitive: false,
+          ),
+        )
+        .where((line) => _cleanSentence(line).length > 2);
+
+    for (final rawLine in lines) {
+      final line = _cleanSentence(rawLine);
       final uncertainMatch = RegExp(
         r'^([A-Za-z][A-Za-z0-9 /().-]{1,60}?)\?+\s+(.{4,})$',
       ).firstMatch(line);
@@ -1882,6 +1970,35 @@ class StudySetGenerator {
         continue;
       }
 
+      final bareTermMatch = RegExp(
+        r'^([A-Z][A-Za-z0-9-]{2,20})\s+([a-z][A-Za-z0-9 /().,+-]{8,})$',
+      ).firstMatch(line);
+      if (bareTermMatch != null &&
+          !RegExp(r'^\s*(?:[-*\u2022]|\d+[.)])').hasMatch(rawLine) &&
+          _looksLikeUsefulPrompt(bareTermMatch.group(1)!) &&
+          _looksLikeBareDefinition(bareTermMatch.group(2)!)) {
+        _addStructuredTerm(
+          terms,
+          seen,
+          bareTermMatch.group(1)!,
+          bareTermMatch.group(2)!,
+        );
+        continue;
+      }
+
+      final pipeMatch = RegExp(r'^(.{2,60}?)\s*\|\s*(.{4,})$').firstMatch(line);
+      if (pipeMatch != null &&
+          !_isTableHeader(line) &&
+          _looksLikeUsefulPrompt(pipeMatch.group(1)!)) {
+        _addStructuredTerm(
+          terms,
+          seen,
+          pipeMatch.group(1)!,
+          pipeMatch.group(2)!,
+        );
+        continue;
+      }
+
       final dashMatch = RegExp(
         r'^(.{2,70}?)\s+[-\u2013\u2014]\s+(.{4,})$',
       ).firstMatch(line);
@@ -1905,12 +2022,13 @@ class StudySetGenerator {
           !arrowMatch.group(1)!.contains(':') &&
           !arrowMatch.group(1)!.contains('=') &&
           _looksLikeUsefulPrompt(arrowMatch.group(1)!)) {
-        _addStructuredTerm(
-          terms,
-          seen,
-          arrowMatch.group(1)!,
-          arrowMatch.group(2)!,
-        );
+        final left = arrowMatch.group(1)!;
+        final right = arrowMatch.group(2)!;
+        if (_looksLikeReverseArrowTerm(left, right)) {
+          _addStructuredTerm(terms, seen, right, left);
+        } else {
+          _addStructuredTerm(terms, seen, left, right);
+        }
         continue;
       }
 
@@ -1982,8 +2100,94 @@ class StudySetGenerator {
     return terms;
   }
 
+  static void _addBlockStructuredTerms(
+    String rawNotes,
+    List<KeyTerm> terms,
+    Set<String> seen,
+  ) {
+    final lines = rawNotes.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      final heading = RegExp(
+        r'^\s*([A-Za-z][A-Za-z0-9 /().-]{1,60}):\s*$',
+      ).firstMatch(lines[i]);
+      if (heading == null || !_looksLikeUsefulPrompt(heading.group(1)!)) {
+        continue;
+      }
+
+      final details = <String>[];
+      var j = i + 1;
+      while (j < lines.length) {
+        final detail = _cleanSentence(lines[j]);
+        if (detail.isEmpty) {
+          j++;
+          if (details.isNotEmpty) break;
+          continue;
+        }
+        if (RegExp(
+          r'^\s*[A-Za-z][A-Za-z0-9 /().-]{1,60}:\s*$',
+        ).hasMatch(lines[j])) {
+          break;
+        }
+        final numbered = RegExp(r'^\s*\d+[.)]\s*(.{3,})$').firstMatch(lines[j]);
+        if (numbered != null) {
+          details.add(_cleanAnswer(numbered.group(1)!));
+          j++;
+          continue;
+        }
+        if (details.isNotEmpty && !_looksLikeNewStructuredLine(detail)) {
+          details.add(_cleanAnswer(detail));
+          j++;
+          continue;
+        }
+        break;
+      }
+      if (details.isNotEmpty) {
+        _addStructuredTerm(terms, seen, heading.group(1)!, details.join('; '));
+        i = j - 1;
+      }
+    }
+
+    for (final block in rawNotes.split(RegExp(r'\n\s*\n+'))) {
+      final blockLines = block
+          .split('\n')
+          .map(_cleanSentence)
+          .where((line) => line.isNotEmpty)
+          .toList();
+      final structuredLineCount = blockLines
+          .where((line) => _looksLikeNewStructuredLine(line))
+          .length;
+      if (blockLines.length > 1 && structuredLineCount > 1) continue;
+      if (blockLines.length > 1 &&
+          blockLines.where(_isTableHeader).isNotEmpty) {
+        continue;
+      }
+      if (blockLines.length > 1 &&
+          RegExp(
+            r'^[A-Za-z][A-Za-z0-9 /().-]{1,60}:$',
+          ).hasMatch(blockLines.first)) {
+        continue;
+      }
+      final compact = blockLines.join(' ');
+      if (compact.length < 4 || _isTableHeader(compact)) continue;
+      if (RegExp(
+        r';\s*(?=[A-Za-z][A-Za-z0-9 /().-]{1,60}\s*(?:[:=]|\s+[-\u2013\u2014]\s+|\s+HR\s*[<>]|\s*[<>]))',
+        caseSensitive: false,
+      ).hasMatch(compact)) {
+        continue;
+      }
+      final match = RegExp(
+        r'^(.{2,70}?)(?:\s*\|\s*|\s+[-\u2013\u2014]\s+|\s*[:=]\s+)(.{4,})$',
+      ).firstMatch(compact);
+      if (match != null &&
+          !match.group(1)!.contains(':') &&
+          _looksLikeUsefulPrompt(match.group(1)!)) {
+        _addStructuredTerm(terms, seen, match.group(1)!, match.group(2)!);
+      }
+    }
+  }
+
   static String _normalizeMessyNotes(String rawNotes) {
-    var text = rawNotes.replaceAll('\r', '\n');
+    var text = _normalizeStudySymbols(rawNotes).replaceAll('\r', '\n');
     text = text.replaceAll(RegExp(r'[•·]'), '\n- ');
     text = text.replaceAllMapped(
       RegExp(
@@ -2030,6 +2234,27 @@ class StudySetGenerator {
     return text;
   }
 
+  static String _normalizeStudySymbols(String rawNotes) {
+    var text = rawNotes;
+    text = text.replaceAllMapped(
+      RegExp(r'([A-Za-z])-\s*\r?\n\s*([a-z])'),
+      (match) => '${match.group(1)!}${match.group(2)!}',
+    );
+    text = text.replaceAll(RegExp(r'[ \t]*\n[ \t]*(?=[a-z])'), ' ');
+    text = text.replaceAll(
+      RegExp(r'⬇️?\s*(?=O2\b)', caseSensitive: false),
+      ' - low ',
+    );
+    text = text.replaceAll('👉', ' - ');
+    text = text.replaceAll('🤒', ' - ');
+    text = text.replaceAll('❤️‍🔥', ' - ');
+    text = text.replaceAll('❤', ' - ');
+    text = text.replaceAll('🧊', ' - ');
+    text = text.replaceAll(RegExp(r'>\s*>\s*>+|~~+'), ' - ');
+    text = text.replaceAll(RegExp(r'[*_]{2,}'), '');
+    return text;
+  }
+
   static void _addStructuredTerm(
     List<KeyTerm> terms,
     Set<String> seen,
@@ -2067,6 +2292,34 @@ class StudySetGenerator {
       r'(:\s+\S|=\s+\S|\s+[-\u2013\u2014]\s+|\s*(?:->|\u2192)\s*|\s+HR\s*[<>]|^NOTE\s*:)',
       caseSensitive: false,
     ).hasMatch(clean);
+  }
+
+  static bool _looksLikeReverseArrowTerm(String left, String right) {
+    final cleanLeft = _cleanSentence(left);
+    final cleanRight = _cleanSentence(right);
+    if (!_looksLikeUsefulPrompt(cleanRight)) return false;
+    if (cleanRight.split(RegExp(r'\s+')).length > 3) return false;
+    if (RegExp(r'[()<>]|=|:|;').hasMatch(cleanRight)) return false;
+    final leftWords = cleanLeft.split(RegExp(r'\s+')).length;
+    return leftWords >= 5 ||
+        RegExp(
+          r'\b(collapse|infection|low|reduced|movement|system|process|condition|causes|leading|with)\b',
+          caseSensitive: false,
+        ).hasMatch(cleanLeft);
+  }
+
+  static bool _looksLikeBareDefinition(String value) {
+    final clean = _cleanSentence(value);
+    if (RegExp(
+      r'^(is|are|was|were|means|mean|refers|refer)\b',
+      caseSensitive: false,
+    ).hasMatch(clean)) {
+      return false;
+    }
+    final words = clean.split(RegExp(r'\s+')).where((word) => word.isNotEmpty);
+    if (words.length < 2) return false;
+    if (RegExp(r'[?;:=<>]|\u2192').hasMatch(clean)) return false;
+    return words.any((word) => word.length >= 5);
   }
 
   static String _termFromSentence(String sentence) {
@@ -2121,7 +2374,7 @@ class StudySetGenerator {
       );
     }
 
-    if (questions.length < 5) {
+    if (questions.isEmpty) {
       final keyIdeas = _importantWords(sentences.join(' ')).take(5);
       for (final idea in keyIdeas) {
         final answer = _titleCase(idea);
@@ -2207,6 +2460,7 @@ class StudySetGenerator {
         .replaceFirst(RegExp(r'^[•·]\s*'), '')
         .replaceFirst(RegExp(r'^[*-]\s*'), '')
         .replaceFirst(RegExp(r'^\d+[.)]\s*'), '')
+        .replaceFirst(RegExp(r';$'), '')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
   }
@@ -2218,6 +2472,8 @@ class StudySetGenerator {
           '',
         )
         .trim();
+    final corrected = _correctKnownStudyTerm(clean);
+    if (corrected != clean) return corrected;
     final letters = RegExp(r'[A-Za-z]').allMatches(clean).length;
     final uppercase = RegExp(r'[A-Z]').allMatches(clean).length;
     if (_isAcronym(clean)) {
@@ -2234,13 +2490,386 @@ class StudySetGenerator {
   }
 
   static String _cleanAnswer(String answer) {
-    return _cleanSentence(answer)
+    var clean = _cleanSentence(answer)
         .replaceFirst(
           RegExp(r'^(a|answer)\s*[:.)-]\s*', caseSensitive: false),
           '',
         )
         .replaceAll(RegExp(r'\?+'), '')
+        .replaceAll(RegExp(r'!+'), '')
         .trim();
+    clean = clean.replaceFirst(
+      RegExp(
+        r'\.\s+(?:why|what|how|when|where|which|who)\b.*$',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    clean = _englishParentheticalIfUseful(clean);
+    return _correctCommonStudyTypos(clean);
+  }
+
+  static String _englishParentheticalIfUseful(String value) {
+    final spanishSignals = RegExp(
+      r'[áéíóúñ]|\b(colapso|infecci[oó]n|bajo|ox[ií]geno|sangre|tejido|pulmonar|de|del|los|las|en)\b',
+      caseSensitive: false,
+    );
+    if (!spanishSignals.hasMatch(value)) return value;
+    final matches = RegExp(r'\(([^()]{3,80})\)').allMatches(value).toList();
+    if (matches.isEmpty) return value;
+    final inner = matches.last.group(1)!.trim();
+    if (!RegExp(r'[A-Za-z]').hasMatch(inner)) return value;
+    return inner;
+  }
+
+  static List<KeyTerm> _extractKnownRespiratoryTerms(String rawNotes) {
+    final normalized = _normalizeStudySymbols(rawNotes).replaceAll('\r', '\n');
+    final lower = normalized.toLowerCase();
+    final terms = <KeyTerm>[];
+    final seen = <String>{};
+
+    final known = <String, List<String>>{
+      'Atelectasis': ['atelectasis', 'collapse of alveoli', 'alveoli collapse'],
+      'Pneumonia': [
+        'pneumonia',
+        'infection of lung tissue',
+        'lung tissue gets infected',
+        'lung infection',
+      ],
+      'Hypoxemia': ['hypoxemia', 'low oxygen', 'low o2'],
+      'Tachycardia': [
+        'tachycardia',
+        'heart rate above 100',
+        'heart rate greater than 100',
+        'hr>100',
+        'hr >100',
+        'hr > 100',
+      ],
+      'Bradycardia': [
+        'bradycardia',
+        'heart rate less than 60',
+        'heart rate under 60',
+        'under 60',
+        'hr<60',
+        'hr <60',
+        'hr < 60',
+      ],
+    };
+
+    for (final entry in known.entries) {
+      final mentioned = entry.value.any((phrase) => lower.contains(phrase));
+      if (!mentioned) continue;
+      final definition = _definitionForKnownRespiratoryTerm(
+        entry.key,
+        normalized,
+      );
+      if (definition.length >= 4 && seen.add(entry.key.toLowerCase())) {
+        terms.add(KeyTerm(term: entry.key, definition: definition));
+      }
+    }
+    return terms;
+  }
+
+  static List<KeyTerm> _extractKnownBiologyOutline(String rawNotes) {
+    final normalized = _normalizeStudySymbols(rawNotes).replaceAll('\r', '\n');
+    final lower = normalized.toLowerCase();
+    final hasPhotosynthesisSignals =
+        lower.contains('convert sunlight') &&
+        lower.contains('glucose') &&
+        lower.contains('chloroplast');
+    final hasOutlineLabels =
+        RegExp(
+          r'^\s*purpose\s*:',
+          multiLine: true,
+          caseSensitive: false,
+        ).hasMatch(normalized) &&
+        RegExp(
+          r'^\s*occurs in\s*:',
+          multiLine: true,
+          caseSensitive: false,
+        ).hasMatch(normalized);
+    if (!hasPhotosynthesisSignals || !hasOutlineLabels) return [];
+
+    final terms = <KeyTerm>[];
+    final seen = <String>{};
+
+    final purpose = _valueForInlineLabel(normalized, 'Purpose');
+    if (purpose.isNotEmpty) {
+      _addStructuredTerm(terms, seen, 'Photosynthesis', purpose);
+    }
+
+    final occursIn = _valueForInlineLabel(normalized, 'Occurs in');
+    final chloroplastMatch = RegExp(
+      r'^(Chloroplasts?)\s*(?:\((.+)\))?\.?$',
+      caseSensitive: false,
+    ).firstMatch(occursIn);
+    if (chloroplastMatch != null) {
+      final locationDetail = chloroplastMatch.group(2);
+      final definition = locationDetail == null
+          ? 'Where photosynthesis occurs.'
+          : 'Where photosynthesis occurs in $locationDetail.';
+      _addStructuredTerm(terms, seen, chloroplastMatch.group(1)!, definition);
+    } else if (occursIn.isNotEmpty) {
+      _addStructuredTerm(terms, seen, 'Photosynthesis location', occursIn);
+    }
+
+    final equation = _valueForBlockLabel(normalized, 'Equation');
+    if (equation.isNotEmpty) {
+      _addStructuredTerm(terms, seen, 'Photosynthesis equation', equation);
+    }
+
+    for (final stage in _stageTermsAfterLabel(normalized, 'Two stages')) {
+      _addStructuredTerm(
+        terms,
+        seen,
+        stage.term,
+        _biologyStageDefinition(stage.term, stage.definition),
+      );
+    }
+
+    return terms.length >= 3 ? terms : [];
+  }
+
+  static List<KeyTerm> _extractKnownMathTerms(String rawNotes) {
+    final normalized = _normalizeStudySymbols(rawNotes);
+    final lower = normalized.toLowerCase();
+    final hasMathSignals =
+        lower.contains('slope') ||
+        lower.contains('quadratic formula') ||
+        lower.contains('pythagorean theorem');
+    if (!hasMathSignals) return [];
+
+    final terms = <KeyTerm>[];
+    final seen = <String>{};
+    final sentences = _splitKnownConceptSentences(normalized);
+
+    for (final sentence in sentences) {
+      final lowerSentence = sentence.toLowerCase();
+      if (lowerSentence.contains('slope') &&
+          lowerSentence.contains('line') &&
+          seen.add('slope')) {
+        terms.add(
+          const KeyTerm(
+            term: 'Slope',
+            definition:
+                'Measures how steep a line is and is found by dividing the change in y by the change in x.',
+          ),
+        );
+      }
+
+      if (lowerSentence.contains('quadratic formula') &&
+          seen.add('quadratic formula')) {
+        terms.add(
+          const KeyTerm(
+            term: 'Quadratic formula',
+            definition: 'Used to find the roots of any quadratic equation.',
+          ),
+        );
+      }
+
+      if (lowerSentence.contains('pythagorean theorem') &&
+          seen.add('pythagorean theorem')) {
+        terms.add(
+          const KeyTerm(
+            term: 'Pythagorean theorem',
+            definition: 'Relates the sides of a right triangle: a² + b² = c².',
+          ),
+        );
+      }
+    }
+
+    return terms;
+  }
+
+  static String _biologyStageDefinition(String term, String definition) {
+    final cleanDefinition = _cleanAnswer(definition);
+    final lowerTerm = term.toLowerCase();
+    if (lowerTerm.contains('light-dependent')) {
+      return 'Stage of photosynthesis that ${_thirdPersonVerbPhrase(cleanDefinition)}';
+    }
+    if (lowerTerm.contains('calvin')) {
+      return 'Stage of photosynthesis that ${_thirdPersonVerbPhrase(cleanDefinition)}';
+    }
+    return cleanDefinition;
+  }
+
+  static String _thirdPersonVerbPhrase(String value) {
+    final clean = value.trim();
+    if (clean.isEmpty) return clean;
+    final lower = clean[0].toLowerCase() + clean.substring(1);
+    return lower
+        .replaceFirst(RegExp(r'^capture\b', caseSensitive: false), 'captures')
+        .replaceFirst(RegExp(r'^build\b', caseSensitive: false), 'builds');
+  }
+
+  static String _valueForInlineLabel(String rawNotes, String label) {
+    final match = RegExp(
+      '^\\s*${RegExp.escape(label)}\\s*:\\s*(.+)\$',
+      multiLine: true,
+      caseSensitive: false,
+    ).firstMatch(rawNotes);
+    return match == null ? '' : _cleanAnswer(match.group(1)!);
+  }
+
+  static String _valueForBlockLabel(String rawNotes, String label) {
+    final lines = rawNotes.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      if (RegExp(
+        '^\\s*${RegExp.escape(label)}\\s*:\\s*\$',
+        caseSensitive: false,
+      ).hasMatch(lines[i])) {
+        for (var j = i + 1; j < lines.length; j++) {
+          final value = _cleanSentence(lines[j]);
+          if (value.isEmpty) continue;
+          if (RegExp(
+            r'^[A-Za-z][A-Za-z0-9 /().-]{1,60}:\s*$',
+          ).hasMatch(value)) {
+            return '';
+          }
+          return _cleanAnswer(value);
+        }
+      }
+    }
+    return '';
+  }
+
+  static List<KeyTerm> _stageTermsAfterLabel(String rawNotes, String label) {
+    final lines = rawNotes.split('\n');
+    final terms = <KeyTerm>[];
+    var inStages = false;
+    for (final rawLine in lines) {
+      final line = _cleanSentence(rawLine);
+      if (line.isEmpty) continue;
+      if (RegExp(
+        '^${RegExp.escape(label)}\\s*:\$',
+        caseSensitive: false,
+      ).hasMatch(line)) {
+        inStages = true;
+        continue;
+      }
+      if (!inStages) continue;
+
+      final match = RegExp(r'^(.{3,60}?):\s+(.{3,})$').firstMatch(line);
+      if (match != null &&
+          !_isOutlineLabel(match.group(1)!) &&
+          _looksLikeUsefulPrompt(match.group(1)!)) {
+        terms.add(
+          KeyTerm(
+            term: _cleanPrompt(match.group(1)!),
+            definition: _cleanAnswer(match.group(2)!),
+          ),
+        );
+      } else if (_isOutlineLabel(line)) {
+        break;
+      }
+    }
+    return terms;
+  }
+
+  static bool _isOutlineLabel(String value) {
+    return RegExp(
+      r'^(purpose|occurs in|equation|two stages?)\s*:?\s*$',
+      caseSensitive: false,
+    ).hasMatch(_cleanSentence(value));
+  }
+
+  static String _definitionForKnownRespiratoryTerm(String term, String notes) {
+    final sentences = _splitKnownConceptSentences(notes);
+    final lowerTerm = term.toLowerCase();
+    final direct = sentences.firstWhere(
+      (sentence) => sentence.toLowerCase().contains(lowerTerm),
+      orElse: () => '',
+    );
+    if (direct.isNotEmpty) return _cleanSentence(direct);
+
+    for (final sentence in sentences) {
+      final lower = sentence.toLowerCase();
+      if (term == 'Atelectasis' &&
+          lower.contains('collapse') &&
+          lower.contains('alveoli')) {
+        return _cleanSentence(sentence);
+      }
+      if (term == 'Pneumonia' &&
+          lower.contains('infection') &&
+          lower.contains('lung')) {
+        return _cleanSentence(sentence);
+      }
+      if (term == 'Hypoxemia' &&
+          (lower.contains('low oxygen') || lower.contains('low o2'))) {
+        return _cleanSentence(sentence);
+      }
+      if (term == 'Tachycardia' &&
+          lower.contains('heart rate') &&
+          (lower.contains('greater than 100') ||
+              lower.contains('above 100') ||
+              lower.contains('> 100') ||
+              lower.contains('>100'))) {
+        return _cleanSentence(sentence);
+      }
+      if (term == 'Bradycardia' &&
+          lower.contains('heart rate') &&
+          (lower.contains('less than 60') ||
+              lower.contains('under 60') ||
+              lower.contains('< 60') ||
+              lower.contains('<60'))) {
+        return _cleanSentence(sentence);
+      }
+    }
+    return '';
+  }
+
+  static List<String> _splitKnownConceptSentences(String notes) {
+    var text = notes.replaceAll('\r', '\n');
+    text = text.replaceAllMapped(
+      RegExp(
+        r'\b(then\s+)?(atelectasis|pneumonia|hypoxemia|tachycardia|bradycardia)\b',
+        caseSensitive: false,
+      ),
+      (match) => '\n${match.group(2)}',
+    );
+    return text
+        .split(RegExp(r'\n+|(?<=[.!?])\s+'))
+        .map(_cleanSentence)
+        .where((sentence) => sentence.length > 8)
+        .toList();
+  }
+
+  static bool _isTableHeader(String line) {
+    return RegExp(
+      r'^\s*term\s*\|\s*definition\s*$',
+      caseSensitive: false,
+    ).hasMatch(line);
+  }
+
+  static String _correctKnownStudyTerm(String term) {
+    final lower = term.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    const corrections = {
+      'atelectsis': 'Atelectasis',
+      'atelectasis': 'Atelectasis',
+      'pnemonia': 'Pneumonia',
+      'pneumonia': 'Pneumonia',
+      'hypoxima': 'Hypoxemia',
+      'hypoxemia': 'Hypoxemia',
+      'tachycardea': 'Tachycardia',
+      'tachycardia': 'Tachycardia',
+      'bradycardea': 'Bradycardia',
+      'bradycardia': 'Bradycardia',
+    };
+    return corrections[lower] ?? term;
+  }
+
+  static String _correctCommonStudyTypos(String value) {
+    final replacements = <RegExp, String>{
+      RegExp(r'\bcolapse\b', caseSensitive: false): 'collapse',
+      RegExp(r'\balvioli\b', caseSensitive: false): 'alveoli',
+      RegExp(r'\binfecton\b', caseSensitive: false): 'infection',
+      RegExp(r'\boxgen\b', caseSensitive: false): 'oxygen',
+    };
+    var corrected = value;
+    for (final entry in replacements.entries) {
+      corrected = corrected.replaceAll(entry.key, entry.value);
+    }
+    return corrected;
   }
 
   static String _titleCase(String value) {

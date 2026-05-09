@@ -168,7 +168,6 @@ Bradycardia <60 bpm
 ''';
 
     final cards = flashcardMap(StudySetGenerator.generate(notes));
-
     expect(cards.length, 5);
     expect(
       cards['Atelectasis'],
@@ -215,7 +214,6 @@ Bradycardia <60 bpm
 ''';
 
     final cards = flashcardMap(StudySetGenerator.generate(notes));
-
     expect(cards.length, 5);
     expect(cards['Atelectasis'], 'collapse of alveoli');
     expect(cards['Pneumonia'], 'infection of lung tissue');
@@ -239,7 +237,6 @@ Renaissance \u2013 cultural rebirth in Europe
 ''';
 
     final cards = flashcardMap(StudySetGenerator.generate(notes));
-
     expect(cards.length, 5);
     expect(cards['Mitochondria'], 'powerhouse of the cell');
     expect(cards['Osmosis'], 'movement of water');
@@ -308,6 +305,440 @@ NOTE: “Ischemia” = reduced blood flow to tissues \u2192 pain
     expect(
       cards.keys,
       isNot(contains('Respiratory conditions we covered today')),
+    );
+  });
+
+  test('builds flashcards from semicolon-separated inline notes', () {
+    const notes =
+        'Atelectasis = alveoli collapse; Pneumonia = lung infection; '
+        'Hypoxemia = low O2; Tachycardia = HR >100; Bradycardia = HR <60';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+
+    expect(cards.length, 5);
+    expect(cards['Atelectasis'], 'alveoli collapse');
+    expect(cards['Pneumonia'], 'lung infection');
+    expect(cards['Hypoxemia'], 'low O2');
+    expect(cards['Tachycardia'], 'HR >100');
+    expect(cards['Bradycardia'], 'HR <60');
+  });
+
+  test('builds flashcards from definition-to-term arrow notes', () {
+    const notes = '''
+Collapse of alveoli leading to reduced gas exchange \u2192 Atelectasis
+Infection of lung tissue with inflammation \u2192 Pneumonia
+Low oxygen in the blood \u2192 Hypoxemia
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+    expect(cards.length, 3);
+    expect(
+      cards['Atelectasis'],
+      'Collapse of alveoli leading to reduced gas exchange',
+    );
+    expect(cards['Pneumonia'], 'Infection of lung tissue with inflammation');
+    expect(cards['Hypoxemia'], 'Low oxygen in the blood');
+    expect(
+      cards.keys,
+      isNot(contains('Collapse of alveoli leading to reduced gas exchange')),
+    );
+  });
+
+  test('builds flashcards from bare term definition lines', () {
+    const notes = '''
+Atelectasis collapse of alveoli reduced gas exchange
+Pneumonia infection lung tissue inflammation fluid
+Hypoxemia low oxygen blood
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+    expect(cards.length, 3);
+    expect(cards['Atelectasis'], 'collapse of alveoli reduced gas exchange');
+    expect(cards['Pneumonia'], 'infection lung tissue inflammation fluid');
+    expect(cards['Hypoxemia'], 'low oxygen blood');
+  });
+
+  test('builds flashcards from emoji-heavy shorthand notes', () {
+    const notes = '''
+Atelectasis 👉 alveoli collapse ↓ gas exchange
+Pneumonia 🤒 infection lungs + fluid
+Hypoxemia ⬇️O2 in blood
+Tachycardia ❤️‍🔥 HR>100
+Bradycardia 🧊 HR<60
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+
+    expect(cards.length, 5);
+    expect(cards['Atelectasis'], contains('alveoli collapse'));
+    expect(cards['Pneumonia'], 'infection lungs + fluid');
+    expect(cards['Hypoxemia'], 'low O2 in blood');
+    expect(cards['Tachycardia'], 'HR>100');
+    expect(cards['Bradycardia'], 'HR<60');
+  });
+
+  test('corrects common respiratory term misspellings', () {
+    const notes = '''
+Atelectsis = colapse of alvioli
+Pnemonia = lung infecton
+Hypoxima = low oxgen in blood
+Tachycardea = HR >100
+Bradycardea = HR <60
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+
+    expect(cards.length, 5);
+    expect(cards['Atelectasis'], 'collapse of alveoli');
+    expect(cards['Pneumonia'], 'lung infection');
+    expect(cards['Hypoxemia'], 'low oxygen in blood');
+    expect(cards['Tachycardia'], 'HR >100');
+    expect(cards['Bradycardia'], 'HR <60');
+  });
+
+  test('keeps helpful parenthetical details in dash notes', () {
+    const notes = '''
+Atelectasis – collapse of alveoli (super common after surgery btw)
+Pneumonia – infection of lung tissue (remember: crackles!!)
+Hypoxemia – low O2 in blood (SpO2 < 90 is bad)
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+    expect(cards.length, 3);
+    expect(cards['Atelectasis'], contains('super common after surgery'));
+    expect(cards['Pneumonia'], contains('crackles'));
+    expect(cards['Hypoxemia'], contains('SpO2 < 90'));
+  });
+
+  test('keeps semicolon details in dash notes', () {
+    const notes = '''
+Atelectasis – collapse of alveoli; ↓ gas exchange; often post-op
+Pneumonia – lung infection; inflammation; fluid buildup; fever/cough
+Hypoxemia – low O2; cyanosis; confusion
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+
+    expect(cards.length, 3);
+    expect(cards['Atelectasis'], contains('often post-op'));
+    expect(cards['Pneumonia'], contains('fluid buildup'));
+    expect(cards['Hypoxemia'], contains('cyanosis'));
+  });
+
+  test('ignores section headings around indented term notes', () {
+    const notes = '''
+Respiratory Disorders:
+    Atelectasis – collapse of alveoli
+    Pneumonia – infection of lung tissue
+Cardiac Terms:
+    Tachycardia – HR > 100
+    Bradycardia – HR < 60
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+
+    expect(cards.length, 4);
+    expect(cards['Atelectasis'], 'collapse of alveoli');
+    expect(cards['Pneumonia'], 'infection of lung tissue');
+    expect(cards['Tachycardia'], 'HR > 100');
+    expect(cards['Bradycardia'], 'HR < 60');
+    expect(cards.keys, isNot(contains('Respiratory Disorders')));
+    expect(cards.keys, isNot(contains('Cardiac Terms')));
+  });
+
+  test('builds flashcards from pasted table notes', () {
+    const notes = '''
+Term | Definition
+Atelectasis | Collapse of alveoli
+Pneumonia | Infection of lung tissue
+Hypoxemia | Low oxygen in blood
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+
+    expect(cards.length, 3);
+    expect(cards['Atelectasis'], 'Collapse of alveoli');
+    expect(cards['Pneumonia'], 'Infection of lung tissue');
+    expect(cards['Hypoxemia'], 'Low oxygen in blood');
+    expect(cards.keys, isNot(contains('Term')));
+  });
+
+  test('normalizes all-caps and mixed-case term notes', () {
+    const notes = '''
+ATELECTASIS – Collapse Of Alveoli
+PNEUMONIA – Infection Of LUNG Tissue
+Hypoxemia – LOW Oxygen In Blood
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+
+    expect(cards.length, 3);
+    expect(cards['Atelectasis'], 'Collapse Of Alveoli');
+    expect(cards['Pneumonia'], 'Infection Of LUNG Tissue');
+    expect(cards['Hypoxemia'], 'LOW Oxygen In Blood');
+  });
+
+  test('extracts respiratory terms from lecture transcript notes', () {
+    const notes =
+        'So atelectasis basically what that means is the alveoli collapse and '
+        'then you get reduced gas exchange and that’s why patients after '
+        'surgery need to use the incentive spirometer okay then pneumonia is '
+        'when the lung tissue gets infected and inflamed and you’ll hear '
+        'crackles and fever usually bacterial but can be viral too and '
+        'hypoxemia is just low oxygen in the blood like SpO2 under 90 percent '
+        'and tachycardia is heart rate above 100 usually from pain or fever '
+        'and bradycardia is under 60 sometimes normal in athletes';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+
+    expect(cards['Atelectasis'], contains('alveoli collapse'));
+    expect(cards['Pneumonia'], contains('lung tissue gets infected'));
+    expect(cards['Hypoxemia'], contains('low oxygen in the blood'));
+    expect(cards['Tachycardia'], contains('heart rate above 100'));
+    expect(cards['Bradycardia'], contains('under 60'));
+  });
+
+  test('repairs broken PDF line-copy words', () {
+    const notes = '''
+Atelectasis – col-
+lapse of alve-
+oli → ↓ gas ex-
+change
+
+Pneumonia – infec-
+tion of lung tis-
+sue (inflam-
+mation + fluid)
+
+Hypoxemia – low
+oxygen in
+the blood
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+
+    expect(cards.length, 3);
+    expect(cards['Atelectasis'], contains('collapse of alveoli'));
+    expect(cards['Pneumonia'], contains('infection of lung tissue'));
+    expect(cards['Hypoxemia'], contains('low oxygen in the blood'));
+  });
+
+  test('uses English parenthetical definitions in bilingual notes', () {
+    const notes = '''
+Atelectasis – colapso de los alvéolos (collapse of alveoli)
+Pneumonia – infección del tejido pulmonar (lung infection)
+Hypoxemia – bajo oxígeno en la sangre (low O2)
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+
+    expect(cards.length, 3);
+    expect(cards['Atelectasis'], 'collapse of alveoli');
+    expect(cards['Pneumonia'], 'lung infection');
+    expect(cards['Hypoxemia'], 'low O2');
+  });
+
+  test('accepts student synonym definitions', () {
+    const notes = '''
+Atelectasis – lung collapse thing
+Pneumonia – chest infection
+Hypoxemia – low O2 situation
+Tachycardia – fast heart
+Bradycardia – slow heart
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+
+    expect(cards.length, 5);
+    expect(cards['Atelectasis'], 'lung collapse thing');
+    expect(cards['Pneumonia'], 'chest infection');
+    expect(cards['Hypoxemia'], 'low O2 situation');
+    expect(cards['Tachycardia'], 'fast heart');
+    expect(cards['Bradycardia'], 'slow heart');
+  });
+
+  test('removes embedded self-quiz questions after definitions', () {
+    const notes = '''
+Atelectasis – collapse of alveoli. Why does this happen post-op?
+Pneumonia – infection of lung tissue. What are the risk factors?
+Hypoxemia – low oxygen in blood. What SpO2 is considered low?
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+    expect(cards.length, 3);
+    expect(cards['Atelectasis'], 'collapse of alveoli');
+    expect(cards['Pneumonia'], 'infection of lung tissue');
+    expect(cards['Hypoxemia'], 'low oxygen in blood');
+  });
+
+  test('handles chaotic notes across unrelated subjects', () {
+    const notes = '''
+Atelectasis – alveoli collapse
+Mitochondria – powerhouse of the cell
+Pneumonia – lung infection
+French Revolution – 1789 uprising
+Hypoxemia – low oxygen in blood
+Photosynthesis – plants convert sunlight
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+
+    expect(cards.length, 6);
+    expect(cards['Atelectasis'], 'alveoli collapse');
+    expect(cards['Mitochondria'], 'powerhouse of the cell');
+    expect(cards['French Revolution'], '1789 uprising');
+    expect(cards['Photosynthesis'], 'plants convert sunlight');
+  });
+
+  test('keeps nested parenthetical details', () {
+    const notes = '''
+Atelectasis – collapse of alveoli (↓ gas exchange (esp. post-op))
+Pneumonia – infection of lung tissue (bacterial (most common) or viral)
+Hypoxemia – low O2 in blood (SpO2 < 90 (danger zone))
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+
+    expect(cards.length, 3);
+    expect(cards['Atelectasis'], contains('esp. post-op'));
+    expect(cards['Pneumonia'], contains('most common'));
+    expect(cards['Hypoxemia'], contains('danger zone'));
+  });
+
+  test('ignores random symbols and emphasis noise', () {
+    const notes = '''
+Atelectasis = collapse?? alveoli → ↓ gas exchange!!!
+Pneumonia >>> lung infection + fluid??
+Hypoxemia ~~ low O2 in blood
+Tachycardia **HR>100**
+Bradycardia __HR<60__
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+
+    expect(cards.length, 5);
+    expect(cards['Atelectasis'], contains('collapse alveoli'));
+    expect(cards['Pneumonia'], 'lung infection + fluid');
+    expect(cards['Hypoxemia'], 'low O2 in blood');
+    expect(cards['Tachycardia'], 'HR>100');
+    expect(cards['Bradycardia'], 'HR<60');
+  });
+
+  test('merges numbered definitions under term headings', () {
+    const notes = '''
+Atelectasis:
+1. Collapse of alveoli
+2. Reduced gas exchange
+3. Often post-operative
+
+Pneumonia:
+1. Infection of lung tissue
+2. Inflammation
+3. Fluid buildup
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+
+    expect(cards.length, 2);
+    expect(cards['Atelectasis'], contains('Collapse of alveoli'));
+    expect(cards['Atelectasis'], contains('Often post-operative'));
+    expect(cards['Pneumonia'], contains('Infection of lung tissue'));
+    expect(cards['Pneumonia'], contains('Fluid buildup'));
+  });
+
+  test('infers known respiratory terms from definitions only', () {
+    const notes = '''
+Collapse of alveoli leading to reduced gas exchange
+Infection of lung tissue causing inflammation
+Low oxygen level in the blood
+Heart rate greater than 100 bpm
+Heart rate less than 60 bpm
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+
+    expect(cards.length, 5);
+    expect(cards['Atelectasis'], contains('Collapse of alveoli'));
+    expect(cards['Pneumonia'], contains('Infection of lung tissue'));
+    expect(cards['Hypoxemia'], contains('Low oxygen level'));
+    expect(cards['Tachycardia'], contains('greater than 100'));
+    expect(cards['Bradycardia'], contains('less than 60'));
+  });
+
+  test('builds useful flashcards from biology outline labels', () {
+    const notes = '''
+Purpose: Convert sunlight into chemical energy (glucose).
+
+Occurs in: Chloroplasts (plants + some bacteria).
+
+Equation:
+Carbon dioxide + Water + Light \u2192 Glucose + Oxygen
+
+Two stages:
+
+Light-dependent reactions: Capture sunlight.
+
+Calvin cycle: Build glucose.
+''';
+
+    final cards = flashcardMap(StudySetGenerator.generate(notes));
+
+    expect(cards.length, 5);
+    expect(
+      cards['Photosynthesis'],
+      'Convert sunlight into chemical energy (glucose).',
+    );
+    expect(
+      cards['Chloroplasts'],
+      'Where photosynthesis occurs in plants + some bacteria.',
+    );
+    expect(
+      cards['Photosynthesis equation'],
+      'Carbon dioxide + Water + Light \u2192 Glucose + Oxygen',
+    );
+    expect(
+      cards['Light-dependent reactions'],
+      'Stage of photosynthesis that captures sunlight.',
+    );
+    expect(
+      cards['Calvin cycle'],
+      'Stage of photosynthesis that builds glucose.',
+    );
+    expect(cards.keys, isNot(contains('Purpose')));
+    expect(cards.keys, isNot(contains('Occurs in')));
+    expect(cards.keys, isNot(contains('Equation')));
+  });
+
+  test('builds clean flashcards from math paragraph notes', () {
+    const notes =
+        'The slope of a line measures how steep it is and is found by dividing '
+        'the change in y by the change in x. The quadratic formula is used to '
+        'find the roots of any quadratic equation. The Pythagorean theorem '
+        'relates the sides of a right triangle: a² + b² = c².';
+
+    final set = StudySetGenerator.generate(notes);
+    final cards = flashcardMap(set);
+
+    expect(cards.length, 3);
+    expect(
+      cards['Slope'],
+      'Measures how steep a line is and is found by dividing the change in y by the change in x.',
+    );
+    expect(
+      cards['Quadratic formula'],
+      'Used to find the roots of any quadratic equation.',
+    );
+    expect(
+      cards['Pythagorean theorem'],
+      'Relates the sides of a right triangle: a² + b² = c².',
+    );
+    expect(cards.keys, isNot(contains('Dividing')));
+    expect(cards.keys, isNot(contains('The quadratic formula')));
+    expect(
+      set.questions
+          .map((question) => question.options)
+          .expand((option) => option),
+      isNot(contains('Study Goal')),
     );
   });
 
