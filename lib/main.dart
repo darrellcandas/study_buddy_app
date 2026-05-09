@@ -1608,7 +1608,7 @@ class StudySetGenerator {
       if (seen.add(key)) {
         candidates.add(KeyTerm(term: term, definition: definition));
       }
-      if (candidates.length >= 10) break;
+      if (candidates.length >= 20) break;
     }
 
     if (candidates.length >= 4) {
@@ -1628,7 +1628,7 @@ class StudySetGenerator {
       if (candidates.length >= 8) break;
     }
 
-    return candidates.take(max(4, min(candidates.length, 10))).toList();
+    return candidates.take(max(4, min(candidates.length, 20))).toList();
   }
 
   static bool _allContentLinesStructured(String rawNotes, List<KeyTerm> terms) {
@@ -2264,11 +2264,18 @@ class StudySetGenerator {
     final cleanPrompt = _cleanPrompt(prompt);
     final cleanAnswer = _cleanAnswer(answer);
     if (!_isAcronym(cleanPrompt) && cleanPrompt.length < 4) return;
-    if (cleanAnswer.length < 4) return;
+    if (cleanAnswer.length < 4 && !_isCompactFormula(cleanAnswer)) return;
     final key = cleanPrompt.toLowerCase();
     if (seen.add(key)) {
       terms.add(KeyTerm(term: cleanPrompt, definition: cleanAnswer));
     }
+  }
+
+  static bool _isCompactFormula(String value) {
+    final clean = value.trim();
+    if (clean.length < 2) return false;
+    return RegExp(r'[=+\-×*/÷π√²½<>]').hasMatch(clean) ||
+        RegExp(r'\b\d*x\b', caseSensitive: false).hasMatch(clean);
   }
 
   static bool _looksLikeUsefulPrompt(String value) {
@@ -2277,6 +2284,7 @@ class StudySetGenerator {
     final isAcronym = _isAcronym(clean);
     if ((!isAcronym && clean.length < 3) || clean.length > 70) return false;
     if (_stopWords.contains(lower)) return false;
+    if (lower == 'remember') return false;
     if (RegExp(r'^(and|but|or|so|because|while|then)\b').hasMatch(lower)) {
       return false;
     }
@@ -2352,7 +2360,7 @@ class StudySetGenerator {
     final questions = <QuizQuestion>[];
     final distractors = terms.map((term) => term.term).toList();
 
-    for (var i = 0; i < min(terms.length, 8); i++) {
+    for (var i = 0; i < min(terms.length, 16); i++) {
       final term = terms[i];
       final options = <String>[term.term];
       for (final distractor in distractors) {
@@ -2395,7 +2403,7 @@ class StudySetGenerator {
       }
     }
 
-    return questions.take(10).toList();
+    return questions.take(20).toList();
   }
 
   static List<String> _buildPlan(
@@ -2472,6 +2480,8 @@ class StudySetGenerator {
           '',
         )
         .trim();
+    final formulaName = _mathFormulaPromptName(clean);
+    if (formulaName != null) return formulaName;
     final corrected = _correctKnownStudyTerm(clean);
     if (corrected != clean) return corrected;
     final letters = RegExp(r'[A-Za-z]').allMatches(clean).length;
@@ -2483,6 +2493,27 @@ class StudySetGenerator {
       return _titleCase(clean);
     }
     return clean;
+  }
+
+  static String? _mathFormulaPromptName(String prompt) {
+    final normalized = prompt
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .trim();
+    const aliases = {
+      'rect': 'Rectangle area',
+      'rectangle': 'Rectangle area',
+      'tri': 'Triangle area',
+      'triangle': 'Triangle area',
+      'circ': 'Circumference',
+      'circle': 'Circle area',
+      'vol cyl': 'Cylinder volume',
+      'volume cyl': 'Cylinder volume',
+      'cylinder volume': 'Cylinder volume',
+      'pythag': 'Pythagorean theorem',
+      'slope m': 'Slope',
+    };
+    return aliases[normalized];
   }
 
   static bool _isAcronym(String value) {

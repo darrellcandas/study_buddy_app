@@ -742,6 +742,53 @@ Calvin cycle: Build glucose.
     );
   });
 
+  test('keeps compact formulas from larger math notes', () {
+    const notes = '''
+Derivative — Measures rate of change.
+Integral — Finds area under a curve.
+Chain rule — d/dx[f(g(x))] = f'(g(x)) × g'(x)
+Sine — Opposite / Hypotenuse
+Cosine — Adjacent / Hypotenuse
+Tangent — Opposite / Adjacent
+Area formulas:
+Rect = L×W
+Tri = ½BH
+Circ = 2πr
+Vol cyl = πr²h
+Pythag: a²+b²=c²
+Derivative — Measures rate of change.
+Integral — Finds area under a curve.
+Chain rule — d/dx[f(g(x))] = f'(g(x)) × g'(x)
+Sine — Opposite / Hypotenuse
+Cosine — Adjacent / Hypotenuse
+Tangent — Opposite / Adjacent
+Slope (m) = (y₂ − y₁)/(x₂ − x₁)
+Quadratic formula → x = (−b ± √(b² − 4ac)) / 2a
+Remember: π ≈ 3.14
+Derivative of x² → 2x
+Integral of 2x → x² + C
+''';
+
+    final set = StudySetGenerator.generate(notes);
+    final cards = flashcardMap(set);
+
+    expect(cards.length, greaterThanOrEqualTo(14));
+    expect(cards['Derivative'], 'Measures rate of change.');
+    expect(cards['Integral'], 'Finds area under a curve.');
+    expect(cards['Chain rule'], "d/dx[f(g(x))] = f'(g(x)) × g'(x)");
+    expect(cards['Rectangle area'], 'L×W');
+    expect(cards['Triangle area'], '½BH');
+    expect(cards['Circumference'], '2πr');
+    expect(cards['Cylinder volume'], 'πr²h');
+    expect(cards['Pythagorean theorem'], 'a²+b²=c²');
+    expect(cards['Slope'], '(y₂ − y₁)/(x₂ − x₁)');
+    expect(cards['Quadratic formula'], 'x = (−b ± √(b² − 4ac)) / 2a');
+    expect(cards['Derivative of x²'], '2x');
+    expect(cards['Integral of 2x'], 'x² + C');
+    expect(cards.keys, isNot(contains('Remember')));
+    expect(set.questions.length, greaterThan(8));
+  });
+
   testWidgets('generates a local study set from pasted notes', (
     WidgetTester tester,
   ) async {
