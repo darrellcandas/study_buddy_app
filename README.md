@@ -78,6 +78,6 @@ After pushing this repo to GitHub:
 
 The URLs will usually be:
 
-- Home: `https://YOUR-GITHUB-USERNAME.github.io/YOUR-REPO-NAME/`
-- Privacy Policy: `https://YOUR-GITHUB-USERNAME.github.io/YOUR-REPO-NAME/privacy.html`
-- Support: `https://YOUR-GITHUB-USERNAME.github.io/YOUR-REPO-NAME/support.html`
+- Home: https://darrellcandas.github.io/study_buddy_app/
+- Privacy Policy: https://darrellcandas.github.io/study_buddy_app/privacy.html
+- Support: https://darrellcandas.github.io/study_buddy_app/support.html
