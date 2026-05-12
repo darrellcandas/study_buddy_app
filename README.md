@@ -33,9 +33,80 @@ This version intentionally avoids file uploads, cloud storage, and paid AI calls
 
 ## Roadmap
 
-- V2: saved subjects, saved study sets, assignment and test planner, daily study screen, weak-area tracking
-- V3: smart study calendar, spaced repetition, calculator/formula tools, harder practice modes, optional AI explanations after privacy and cost planning
-- Later: PDF upload, image-to-notes, tutor chat, matching games, voice explanations
+### V1: Finished Core Loop
+
+Version 1 proves the core idea: pasted notes can become a useful local study system.
+
+- Paste notes
+- Generate flashcards
+- Generate quizzes
+- Key terms
+- Basic study plan
+- Weak / Okay / Strong tracking during the session
+- Local-only processing
+- No accounts
+- No cloud AI
+
+### V2: Personal Study Organizer
+
+Version 2 should turn Study Buddy from a study set generator into a personal study organizer.
+
+Planned V2 features:
+
+- Saved subjects/classes
+- Saved study sets
+- Local persistence for saved decks and progress
+- Assignment and test planner
+- Daily Planner / daily study screen
+- Exam countdown mode
+- Daily study checklist
+- Weak-card review mode
+- Quiz accuracy tracking
+- Strong / Okay / Weak history
+- Weak-area tracking
+- Better "what to study today" guidance
+
+Suggested V2 build order:
+
+1. Add local saved study sets.
+2. Add subjects/classes.
+3. Add assignment and test dates.
+4. Add the Daily Planner screen.
+5. Add weak-card review and progress history.
+
+### V3: Smarter Study Coach
+
+Version 3 can add heavier smart features after V2 storage and planning are stable.
+
+- Smart study calendar
+- Spaced repetition
+- Calculator/formula tools
+- Harder practice modes
+- Optional AI explanations after privacy and cost planning
+- PDF upload
+- Image-to-notes
+- Tutor chat
+- Matching games
+- Voice explanations
+
+## Version Control Strategy
+
+Keep published V1 and active V2 development separate.
+
+Recommended setup:
+
+- `main`: stable published version or latest releasable version
+- `v2-daily-planner`: active Version 2 development branch
+- `v1.0.0`: tag for the exact Version 1 release commit
+
+If V1 needs a bug fix after V2 work starts:
+
+1. Switch back to `main` or a `v1-maintenance` branch.
+2. Fix only the V1 bug.
+3. Build and publish a patch version, such as `1.0.1`.
+4. Merge or cherry-pick that fix into the V2 branch so V2 also gets it.
+
+Do not build V2 directly on top of the published V1 release without a branch or tag. A branch lets V2 grow without forcing unfinished planner code into a V1 emergency fix.
 
 ## Development
 
